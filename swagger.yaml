@@ -1,0 +1,292 @@
+openapi: 3.0.3
+info:
+  title: Microsserviço de Entrega
+  description: >
+    API REST em PHP (PDO + SQLite) para gerenciamento de **Entregas**.
+    Cada entrega referencia um pagamento (`pagamento`), cuja FK é validada
+    contra a tabela local `pagamento` (mock do microsserviço de Pagamento
+    de outro grupo da turma).
+  version: "1.0.0"
+servers:
+  - url: http://localhost/api_entrega
+    description: Ambiente local (XAMPP)
+
+tags:
+  - name: Entregas
+    description: CRUD de entregas
+  - name: Pagamentos
+    description: Mock do microsserviço de Pagamento (somente leitura)
+
+paths:
+  /entregas.php:
+    get:
+      tags: [Entregas]
+      summary: Listar entregas ou buscar uma entrega por id
+      description: >
+        Se o parâmetro `id` for informado, retorna apenas a entrega
+        correspondente (com os dados do pagamento via LEFT JOIN).
+        Caso contrário, retorna todas as entregas ordenadas por
+        `identrega` decrescente.
+      parameters:
+        - name: id
+          in: query
+          required: false
+          description: ID da entrega a ser consultada
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lista de entregas, ou uma entrega única quando `id` é informado
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items:
+                      $ref: "#/components/schemas/EntregaComPagamento"
+                  - $ref: "#/components/schemas/EntregaComPagamento"
+        "404":
+          description: Entrega não encontrada (quando `id` é informado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Erro"
+
+    post:
+      tags: [Entregas]
+      summary: Cadastrar nova entrega
+      description: >
+        O campo `pagamento` é obrigatório e precisa corresponder a um
+        `id` existente na tabela `pagamento` (validado pela API antes
+        do insert).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EntregaInput"
+      responses:
+        "200":
+          description: >
+            Entrega criada com sucesso. A API retorna o registro recém-criado
+            (já com os dados do pagamento via JOIN).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntregaComPagamento"
+        "422":
+          description: Dados inválidos (ex. `pagamento` ausente ou inexistente, campos acima do tamanho máximo)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErroValidacao"
+
+    put:
+      tags: [Entregas]
+      summary: Atualizar entrega existente
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: ID da entrega a ser atualizada
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EntregaInput"
+      responses:
+        "200":
+          description: Entrega atualizada com sucesso (retorna o registro atualizado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntregaComPagamento"
+        "400":
+          description: Parâmetro `id` não informado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Erro"
+        "404":
+          description: Entrega não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Erro"
+        "422":
+          description: Dados inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErroValidacao"
+
+    delete:
+      tags: [Entregas]
+      summary: Remover entrega
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: ID da entrega a ser removida
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Entrega removida com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensagem:
+                    type: string
+                    example: "Entrega removida com sucesso."
+                  identrega:
+                    type: integer
+                    example: 1
+        "400":
+          description: Parâmetro `id` não informado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Erro"
+        "404":
+          description: Entrega não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Erro"
+
+  /pagamentos.php:
+    get:
+      tags: [Pagamentos]
+      summary: Listar pagamentos ou buscar um pagamento por id
+      description: >
+        Mock local do microsserviço de Pagamento. Aceita somente GET;
+        qualquer outro método retorna 405. Usado para validar a FK
+        `pagamento` antes de criar/atualizar uma entrega.
+      parameters:
+        - name: id
+          in: query
+          required: false
+          description: ID do pagamento a ser consultado
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lista de pagamentos, ou um pagamento único quando `id` é informado
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items:
+                      $ref: "#/components/schemas/Pagamento"
+                  - $ref: "#/components/schemas/Pagamento"
+        "404":
+          description: Pagamento não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Erro"
+        "405":
+          description: Método não permitido (este mock só aceita GET)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Erro"
+
+components:
+  schemas:
+    EntregaInput:
+      type: object
+      required:
+        - pagamento
+      properties:
+        pagamento:
+          type: integer
+          description: ID do pagamento associado (precisa existir na tabela `pagamento`)
+          example: 1
+        endereco:
+          type: string
+          maxLength: 200
+          nullable: true
+          example: "Rua das Flores, 123"
+        entregador:
+          type: string
+          maxLength: 100
+          nullable: true
+          example: "João da Silva"
+
+    EntregaComPagamento:
+      type: object
+      properties:
+        identrega:
+          type: integer
+          example: 1
+        pagamento:
+          type: integer
+          description: ID do pagamento associado
+          example: 1
+        endereco:
+          type: string
+          nullable: true
+          example: "Rua das Flores, 123"
+        entregador:
+          type: string
+          nullable: true
+          example: "João da Silva"
+        pagamento_forma:
+          type: string
+          description: Campo `forma` do pagamento, obtido via LEFT JOIN
+          example: "Cartão de Crédito"
+        pagamento_valor:
+          type: number
+          format: float
+          description: Campo `valor` do pagamento, obtido via LEFT JOIN
+          example: 89.90
+        pagamento_status:
+          type: string
+          description: Campo `status` do pagamento, obtido via LEFT JOIN
+          example: "aprovado"
+
+    Pagamento:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        forma:
+          type: string
+          example: "Cartão de Crédito"
+        valor:
+          type: number
+          format: float
+          example: 89.90
+        status:
+          type: string
+          example: "aprovado"
+
+    Erro:
+      type: object
+      properties:
+        erro:
+          type: string
+          example: "Entrega não encontrada."
+
+    ErroValidacao:
+      type: object
+      properties:
+        erro:
+          type: string
+          example: "Dados inválidos."
+        detalhes:
+          type: array
+          items:
+            type: string
+          example:
+            - "O campo 'pagamento' (id do pagamento) é obrigatório."
+            - "O 'pagamento' informado (id=99) não existe."
